@@ -9,6 +9,24 @@ import (
 	"path"
 )
 
+const help = `proxy: forward HTTPS to HTTP on your network
+Usage:
+  proxy [options]
+Available options:
+  -h
+  --help		show this help
+  -r
+  --root path	uses path as the certificates root folder, default /certs
+  -o
+  --out port	uses port as the outgoing port, default 80
+  -p
+  --port port	uses port as receive port, default 443
+Examples:
+  proxy --help	show this help
+  proxy -o 8080	listen on port 443 and forward to 8080
+  proxy -r files/certificates	listen on port 443 and forward to 8080
+				using ./files/certificates as certificate folder
+`
 
 // find certificate files
 func loadCerts(root string) (map[string]tls.Certificate, error) {
@@ -36,7 +54,30 @@ func loadCerts(root string) (map[string]tls.Certificate, error) {
 }
 
 func main() {
-	certMap, err := loadCerts("/certs")
+	port := "443"
+	outPort := "80"
+	root := "/certs"
+	for i := 1; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "-h", "--help":
+			println(help)
+			os.Exit(0)
+		case "-p", "--port":
+			i++
+			port = os.Args[i]
+		case "-r", "--root":
+			i++
+			root = os.Args[i]
+		case "-o", "--out":
+			i++
+			outPort = os.Args[i]
+		default:
+			println("error: wrong argument", os.Args[i], "\n", help)
+			os.Exit(-1)
+		}
+	}
+
+	certMap, err := loadCerts(root)
 	if err != nil {
 		panic(err)
 	}
@@ -50,7 +91,7 @@ func main() {
 			return &cert, nil
 		},
 	}
-	tcp, err := net.Listen("tcp", ":2000")
+	tcp, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		panic(err)
 	}
@@ -75,7 +116,7 @@ func main() {
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
-			cli, err := net.Dial("tcp", connInfo.ServerName+":80")
+			cli, err := net.Dial("tcp", connInfo.ServerName+":"+outPort)
 			if err != nil {
 				println(err.Error())
 				c.Close()
