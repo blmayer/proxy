@@ -9,7 +9,7 @@ import (
 	"path"
 )
 
-const help = `proxy: forward HTTPS to HTTP on your network
+const help = `proxy: forward TLS connection for your network
 Usage:
   proxy [options]
 Available options:
