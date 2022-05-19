@@ -1,15 +1,16 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
-	"crypto/tls"
 	"net"
 	"os"
 	"path"
 )
 
-const help = `proxy: forward TLS connection for your network
+const help = `proxy: forward HTTPS to HTTP on your network
 Usage:
   proxy [options]
 Available options:
@@ -96,12 +97,15 @@ func main() {
 		panic(err)
 	}
 	defer tcp.Close()
+	println("proxy is ready on port", port, "->", outPort)
 
 	for {
 		conn, err := tcp.Accept()
 		if err != nil {
-			println(err)
+			println("accept error:", err.Error())
+			continue
 		}
+		println("got a connection")
 
 		// select certificate
 		listener := tls.Server(conn, cfg)
@@ -122,10 +126,17 @@ func main() {
 				c.Close()
 				return
 			}
-			
-			go io.Copy(c, cli)
-			go io.Copy(cli, c)
+			go func() {
+				if _, err = io.Copy(c, cli); err != nil && !errors.Is(err, net.ErrClosed) {
+					println("copy c cli error:", err.Error())
+				}
+				c.Close()
+			}()
+			if _, err := io.Copy(cli, c); err != nil && !errors.Is(err, net.ErrClosed) {
+				println("copy cli c error:", err.Error())
+			}
+			cli.Close()
+			println("connection closed")
 		}(listener)
 	}
 }
-
