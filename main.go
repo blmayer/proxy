@@ -7,11 +7,33 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 )
 
+const help = `proxy: A simple proxy to remove TLS at one end
+Usage:
+proxy [options]
+Available options:
+  -h
+  --help		show this help
+  -p
+  --port port	uses port as receive port, default 443
+  -r
+  --root path   uses path as the root of files, default static/
+  
+Examples:
+  proxy --help	show this help
+  proxy -c files/cert	listen on port 1965 using ./files/cert as certificate
+`
+
+type domain struct {
+	Name string
+	Port string
+	Cert tls.Certificate
+}
 
 // find certificate files
-func loadCerts(root string) (map[string]tls.Certificate, error) {
+func loadDomains(root string) (map[string]domain, error) {
 	dir, err := os.Open(root)
 	if err != nil {
 		return nil, err
@@ -21,36 +43,66 @@ func loadCerts(root string) (map[string]tls.Certificate, error) {
 		return nil, err
 	}
 
-	certMap := map[string]tls.Certificate{}
+	certMap := map[string]domain{}
 	for _, dom := range domains {
 		p := path.Join(root, dom)
 		println("found domain", dom)
 
 		// load certs
-		certMap[dom], err = tls.LoadX509KeyPair(p+"/fullchain.pem", p+"/privkey.pem")
+		cert, err := tls.LoadX509KeyPair(p+"/fullchain.pem", p+"/privkey.pem")
 		if err != nil {
 			return nil, err
+		}
+
+		// get port
+		portBytes, err := os.ReadFile(p+"/port")
+		if err != nil {
+			return nil, err
+		}
+		certMap[dom] = domain{
+			Name: dom, 
+			Port: strings.TrimSpace(string(portBytes)),
+			Cert: cert,
 		}
 	}
 	return certMap, nil
 }
 
 func main() {
-	certMap, err := loadCerts("/certs")
+	port := "443"
+	root := "static/"
+
+	for i := 1; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "-h", "--help":
+			println(help)
+			os.Exit(0)
+		case "-p", "--port":
+			i++
+			port = os.Args[i]
+		case "-r", "--root":
+			i++
+			root = os.Args[i]
+		default:
+			println("error: wrong argument", os.Args[i], "\n", help)
+			os.Exit(-1)
+		}
+	}
+	certMap, err := loadDomains(root)
 	if err != nil {
 		panic(err)
 	}
 
 	cfg := &tls.Config{
 		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			cert, ok := certMap[info.ServerName]
+			dom, ok := certMap[info.ServerName]
 			if !ok {
 				return nil, fmt.Errorf("certificate for %s not found", info.ServerName)
 			}
-			return &cert, nil
+			return &dom.Cert, nil
 		},
 	}
-	tcp, err := net.Listen("tcp", ":2000")
+	tcp, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		panic(err)
 	}
@@ -70,12 +122,13 @@ func main() {
 			conn.Close()
 			continue
 		}
-		connInfo := listener.ConnectionState()
-		fmt.Printf("got request to %+v\n", connInfo.ServerName)
+		name := listener.ConnectionState().ServerName
+		fmt.Printf("got request to %+v\n", name)
+		dom := certMap[name]
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
-			cli, err := net.Dial("tcp", connInfo.ServerName+":80")
+			cli, err := net.Dial("tcp", ":"+dom.Port)
 			if err != nil {
 				println(err.Error())
 				c.Close()
@@ -84,6 +137,7 @@ func main() {
 			
 			go io.Copy(c, cli)
 			go io.Copy(cli, c)
+			println("connected to", name, "on port", dom.Port)
 		}(listener)
 	}
 }
