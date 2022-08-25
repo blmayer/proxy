@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"crypto/tls"
+	"errors"
 	"net"
 	"os"
 	"path"
@@ -135,8 +136,16 @@ func main() {
 				return
 			}
 			
-			go io.Copy(c, cli)
-			go io.Copy(cli, c)
+			go func() {
+				if _, err = io.Copy(c, cli); err != nil && !errors.Is(err, net.ErrClosed) {
+					println("copy c cli error:", err.Error())
+				}
+				c.Close()
+			}()
+			if _, err := io.Copy(cli, c); err != nil && !errors.Is(err, net.ErrClosed) {
+				println("copy cli c error:", err.Error())
+			}
+			cli.Close()
 			println("connected to", name, "on port", dom.Port)
 		}(listener)
 	}
