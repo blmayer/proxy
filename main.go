@@ -29,7 +29,7 @@ Examples:
 
 type domain struct {
 	Name string
-	Port string
+	PortMap map[string]string
 	Cert tls.Certificate
 }
 
@@ -56,13 +56,21 @@ func loadDomains(root string) (map[string]domain, error) {
 		}
 
 		// get port
-		portBytes, err := os.ReadFile(p+"/port")
+		portBytes, err := os.ReadFile(p+"/ports")
 		if err != nil {
 			return nil, err
 		}
+
+		portMap := map[string]string{}
+		for _, line := range strings.Fields(string(portBytes)) {
+			ps := strings.Split(line, ":")
+			portMap[ps[0]] = ps[1]
+			println("added port rule", ps[0], "->", ps[1])
+		}
+
 		certMap[dom] = domain{
 			Name: dom, 
-			Port: strings.TrimSpace(string(portBytes)),
+			PortMap: portMap,
 			Cert: cert,
 		}
 	}
@@ -129,7 +137,7 @@ func main() {
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
-			cli, err := net.Dial("tcp", ":"+dom.Port)
+			cli, err := net.Dial("tcp", ":"+dom.PortMap[port])
 			if err != nil {
 				println(err.Error())
 				c.Close()
@@ -146,7 +154,7 @@ func main() {
 				println("copy cli c error:", err.Error())
 			}
 			cli.Close()
-			println("connected to", name, "on port", dom.Port)
+			println("connected to", name, "on port", dom.PortMap[port])
 		}(listener)
 	}
 }
