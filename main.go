@@ -29,7 +29,7 @@ Examples:
 
 type domain struct {
 	Name string
-	PortMap map[string]string
+	To string
 	Cert tls.Certificate
 }
 
@@ -47,32 +47,25 @@ func loadDomains(root string) (map[string]domain, error) {
 	certMap := map[string]domain{}
 	for _, dom := range domains {
 		p := path.Join(root, dom)
-		println("found domain", dom)
 
-		// load certs
 		cert, err := tls.LoadX509KeyPair(p+"/fullchain.pem", p+"/privkey.pem")
 		if err != nil {
 			return nil, err
 		}
 
-		// get port
-		portBytes, err := os.ReadFile(p+"/ports")
+		// get forward address
+		toBytes, err := os.ReadFile(p+"/addr")
 		if err != nil {
-			return nil, err
-		}
-
-		portMap := map[string]string{}
-		for _, line := range strings.Fields(string(portBytes)) {
-			ps := strings.Split(line, ":")
-			portMap[ps[0]] = ps[1]
-			println("added port rule", ps[0], "->", ps[1])
+			println("error reading addr for", dom)
+			continue
 		}
 
 		certMap[dom] = domain{
 			Name: dom, 
-			PortMap: portMap,
+			To: strings.TrimSpace(string(toBytes)),
 			Cert: cert,
 		}
+		println("added", dom, "->", certMap[dom].To)
 	}
 	return certMap, nil
 }
@@ -137,7 +130,7 @@ func main() {
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
-			cli, err := net.Dial("tcp", ":"+dom.PortMap[port])
+			cli, err := net.Dial("tcp", dom.To)
 			if err != nil {
 				println(err.Error())
 				c.Close()
@@ -150,11 +143,12 @@ func main() {
 				}
 				c.Close()
 			}()
+
+			println("forwarding to", name, "on", dom.To)
 			if _, err := io.Copy(cli, c); err != nil && !errors.Is(err, net.ErrClosed) {
 				println("copy cli c error:", err.Error())
 			}
 			cli.Close()
-			println("connected to", name, "on port", dom.PortMap[port])
 		}(listener)
 	}
 }
