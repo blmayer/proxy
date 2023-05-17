@@ -20,11 +20,11 @@ Available options:
   -p
   --port port	uses port as receive port, default 443
   -r
-  --root path   uses path as the root of files, default static/
+  --root path   uses path as the root of certificates, default certs/
   
 Examples:
   proxy --help	show this help
-  proxy -c files/cert	listen on port 1965 using ./files/cert as certificate
+  proxy -r files/cert	listen on port 1965 using ./files/cert as certificate
 `
 
 type domain struct {
