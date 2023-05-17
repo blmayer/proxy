@@ -1,14 +1,16 @@
 package main
 
 import (
-	"fmt"
-	"io"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
 	"strings"
+
+	"blmayer.dev/x/print"
 )
 
 const help = `proxy: A simple proxy to remove TLS at one end
@@ -56,7 +58,7 @@ func loadDomains(root string) (map[string]domain, error) {
 		// get forward address
 		toBytes, err := os.ReadFile(p+"/addr")
 		if err != nil {
-			println("error reading addr for", dom)
+			print.Error("error reading addr for", dom)
 			continue
 		}
 
@@ -65,15 +67,16 @@ func loadDomains(root string) (map[string]domain, error) {
 			To: strings.TrimSpace(string(toBytes)),
 			Cert: cert,
 		}
-		println("added", dom, "->", certMap[dom].To)
+		print.Info("added", dom, "->", certMap[dom].To)
 	}
 	return certMap, nil
 }
 
 func main() {
-	port := "443"
-	root := "static/"
+	print.SetPrefix("proxy")
 
+	port := "443"
+	root := "/certs"
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "-h", "--help":
@@ -113,43 +116,44 @@ func main() {
 	for {
 		conn, err := tcp.Accept()
 		if err != nil {
-			println(err)
+			print.Error("accept error:", err.Error())
+			continue
 		}
+		print.Info("got a connection")
 
 		// select certificate
 		listener := tls.Server(conn, cfg)
 		err = listener.Handshake()
 		if err != nil {
-			println(err.Error())
+			print.Error("handshake error:", err.Error())
 			conn.Close()
 			continue
 		}
 		name := listener.ConnectionState().ServerName
-		fmt.Printf("got request to %+v\n", name)
+		print.Info("got request to %+v\n", name)
 		dom := certMap[name]
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
 			cli, err := net.Dial("tcp", dom.To)
 			if err != nil {
-				println(err.Error())
+				print.Error(name, "dial error:", err.Error())
 				c.Close()
 				return
 			}
 			
 			go func() {
 				if _, err = io.Copy(c, cli); err != nil && !errors.Is(err, net.ErrClosed) {
-					println("copy c cli error:", err.Error())
+					print.Error(name, "copy c cli error:", err.Error())
 				}
 				c.Close()
 			}()
 
-			println("forwarding to", name, "on", dom.To)
+			print.Info("forwarding to", name, "on", dom.To)
 			if _, err := io.Copy(cli, c); err != nil && !errors.Is(err, net.ErrClosed) {
-				println("copy cli c error:", err.Error())
+				print.Error(name, "copy cli c error:", err.Error())
 			}
 			cli.Close()
 		}(listener)
 	}
 }
-
