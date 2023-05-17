@@ -31,7 +31,7 @@ Examples:
 
 type domain struct {
 	Name string
-	To string
+	To   string
 	Cert tls.Certificate
 }
 
@@ -56,15 +56,15 @@ func loadDomains(root string) (map[string]domain, error) {
 		}
 
 		// get forward address
-		toBytes, err := os.ReadFile(p+"/addr")
+		toBytes, err := os.ReadFile(p + "/addr")
 		if err != nil {
 			print.Error("error reading addr for", dom)
 			continue
 		}
 
 		certMap[dom] = domain{
-			Name: dom, 
-			To: strings.TrimSpace(string(toBytes)),
+			Name: dom,
+			To:   strings.TrimSpace(string(toBytes)),
 			Cert: cert,
 		}
 		print.Info("added", dom, "->", certMap[dom].To)
@@ -130,7 +130,7 @@ func main() {
 			continue
 		}
 		name := listener.ConnectionState().ServerName
-		print.Info("got request to %+v\n", name)
+		print.Info("got request to " + name)
 		dom := certMap[name]
 
 		go func(c net.Conn) {
@@ -141,7 +141,7 @@ func main() {
 				c.Close()
 				return
 			}
-			
+
 			go func() {
 				if _, err = io.Copy(c, cli); err != nil && !errors.Is(err, net.ErrClosed) {
 					print.Error(name, "copy c cli error:", err.Error())
