@@ -1,0 +1,46 @@
+proxy
+=====
+
+	A simple proxy to terminate TLS connections
+
+Why
+---
+
+This proxy will receive TLS requests and perform the handshake using
+certificates from a folder and will forward that connection to the requested
+server without TLS.
+
+
+Using
+-----
+
+This program needs a folder with certificate files and one file named addr.
+The default directory is ./certs. Inside this folder create one folder for
+each domain supported, i.e. ./certs/example.com/. And place the following
+files inside it:
+
+- fullchain.pem: The X509 certificate chain in pem format.
+- privkey.pem: The X509 private key in pem format.
+- addr: a file containing the port number to be forwarded.
+
+The forward address is localhost, only this address is supported now.
+
+
+Options
+-------
+
+There are some CLI options that can be passed, run proxy --help for the list.
+
+
+Roadmap
+-------
+
+- Support yaml config file
+- Support different forward addresses
+
+
+Meta
+----
+
+License: BSD 3-Clause
+
