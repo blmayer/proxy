@@ -14,22 +14,25 @@ server without TLS.
 Using
 -----
 
-This program needs a folder with certificate files and one file named addr.
-The default directory is ./certs. Inside this folder create one folder for
-each domain supported, i.e. ./certs/example.com/. And place the following
-files inside it:
+This program a JSON config file, the default location is 
+~/.config/proxy/config.json. For each domain the following info is mandatory:
 
-- fullchain.pem: The X509 certificate chain in pem format.
-- privkey.pem: The X509 private key in pem format.
-- addr: a file containing the port number to be forwarded.
+- domain: The name of the domain.
+- toport: The port number to forward connections.
+- fullchain: The path to X509 certificate chain in pem format.
+- privatekey: The path to X509 private key in pem format.
 
-The forward address is localhost, only this address is supported now.
+And the port number for incoming connections. The forward address is localhost,
+only this address is supported now.
 
 
 Options
 -------
 
 There are some CLI options that can be passed, run proxy --help for the list.
+
+- -c, --config to set a different config file path
+- -h, --help to see help
 
 
 Roadmap
