@@ -6,7 +6,7 @@ proxy
 Why
 ---
 
-This proxy will receive TLS requests and perform the handshake using
+This proxy will receive TLS requests with SNI and perform the handshake using
 certificates from a folder and will forward that connection to the requested
 server without TLS.
 
