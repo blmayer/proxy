@@ -2,13 +2,12 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"path"
-	"strings"
 
 	"blmayer.dev/x/print"
 )
@@ -29,85 +28,83 @@ Examples:
   proxy -r files/cert	listen on port 1965 using ./files/cert as certificate
 `
 
+type Config struct {
+	Port    string
+	Domains []struct {
+		Domain     string
+		ToPort     string
+		FullChain  string
+		PrivateKey string
+	}
+}
+
 type domain struct {
 	Name string
 	To   string
 	Cert tls.Certificate
 }
 
-// find certificate files
-func loadDomains(root string) (map[string]domain, error) {
-	dir, err := os.Open(root)
-	if err != nil {
-		return nil, err
-	}
-	domains, err := dir.Readdirnames(0)
-	if err != nil {
-		return nil, err
-	}
-
-	certMap := map[string]domain{}
-	for _, dom := range domains {
-		p := path.Join(root, dom)
-
-		cert, err := tls.LoadX509KeyPair(p+"/fullchain.pem", p+"/privkey.pem")
-		if err != nil {
-			return nil, err
-		}
-
-		// get forward address
-		toBytes, err := os.ReadFile(p + "/addr")
-		if err != nil {
-			print.Error("error reading addr for", dom)
-			continue
-		}
-
-		certMap[dom] = domain{
-			Name: dom,
-			To:   strings.TrimSpace(string(toBytes)),
-			Cert: cert,
-		}
-		print.Info("added", dom, "->", certMap[dom].To)
-	}
-	return certMap, nil
-}
-
 func main() {
 	print.SetPrefix("proxy")
 
-	port := "443"
-	root := "/certs"
+	file := "~/.config/proxy/config.json"
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "-h", "--help":
 			println(help)
 			os.Exit(0)
-		case "-p", "--port":
+		case "-c", "--config":
 			i++
-			port = os.Args[i]
-		case "-r", "--root":
-			i++
-			root = os.Args[i]
+			file = os.Args[i]
 		default:
 			println("error: wrong argument", os.Args[i], "\n", help)
 			os.Exit(-1)
 		}
 	}
-	certMap, err := loadDomains(root)
+
+	cfgFile, err := os.Open(file)
+	if err != nil {
+		panic(err)
+	}
+	defer cfgFile.Close()
+
+	var cfg Config
+	err = json.NewDecoder(cfgFile).Decode(&cfg)
 	if err != nil {
 		panic(err)
 	}
 
-	cfg := &tls.Config{
+	// default port
+	if cfg.Port == "" {
+		cfg.Port = "443"
+	}
+
+	certs := map[string]domain{}
+	for _, dom := range cfg.Domains {
+		cert, err := tls.LoadX509KeyPair(dom.FullChain, dom.PrivateKey)
+		if err != nil {
+			panic(err)
+		}
+
+		certs[dom.Domain] = domain{
+			Name: dom.Domain,
+			To:   dom.ToPort,
+			Cert: cert,
+		}
+		print.Info("added", dom.Domain, "->", dom.ToPort)
+	}
+	
+	tlsCfg := &tls.Config{
 		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			dom, ok := certMap[info.ServerName]
+			dom, ok := certs[info.ServerName]
 			if !ok {
 				return nil, fmt.Errorf("certificate for %s not found", info.ServerName)
 			}
 			return &dom.Cert, nil
 		},
 	}
-	tcp, err := net.Listen("tcp", ":"+port)
+
+	tcp, err := net.Listen("tcp", ":"+cfg.Port)
 	if err != nil {
 		panic(err)
 	}
@@ -122,7 +119,7 @@ func main() {
 		print.Info("got a connection")
 
 		// select certificate
-		listener := tls.Server(conn, cfg)
+		listener := tls.Server(conn, tlsCfg)
 		err = listener.Handshake()
 		if err != nil {
 			print.Error("handshake error:", err.Error())
@@ -131,7 +128,7 @@ func main() {
 		}
 		name := listener.ConnectionState().ServerName
 		print.Info("got request to " + name)
-		dom := certMap[name]
+		dom := certs[name]
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
