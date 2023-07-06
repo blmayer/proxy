@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 
 	"blmayer.dev/x/print"
 )
@@ -46,8 +47,8 @@ type domain struct {
 
 func main() {
 	print.SetPrefix("proxy")
-
-	file := "~/.config/proxy/config.json"
+	cfgDir, _ := os.UserConfigDir()
+	file := path.Join(cfgDir, "/proxy/config.json")
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "-h", "--help":
@@ -132,7 +133,7 @@ func main() {
 
 		go func(c net.Conn) {
 			// echo all incoming data to the requested host
-			cli, err := net.Dial("tcp", dom.To)
+			cli, err := net.Dial("tcp", ":"+dom.To)
 			if err != nil {
 				print.Error(name, "dial error:", err.Error())
 				c.Close()
